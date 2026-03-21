@@ -277,4 +277,155 @@ for(i in 1:ncol(qualitative_vars)){
          title = paste("Répartition du risque selon :", xlab_i)))
 }
 ```
+### 4.1 Classifieur binaire 
+
+```{r}
+library(dplyr)
+# On utilise ton dataset nettoyé
+y = diabetes_risk_dataset$diabetes_risk # notre target binaire (0/1)
+X = diabetes_risk_dataset %>% select(HbA1c_level, bmi) # Variables explicatives
+
+myClassifier = function (X_train, y_train, X_test, threshold = 0.5){
+  data_train = cbind(y_train, X_train)
+  mod = glm(y_train ~ ., data = data_train, family = binomial(link = "logit"))
+  y_pred = 0 + 1 * (predict.glm(mod, newdata = X_test, type = "response") > threshold)
+  return(y_pred)
+}
+
+```
+
+
+### 4.2 Holdout : 80/20
+
+```{r}
+holdOut = function(X, y, split = 0.8) {
+  n = nrow(X)
+  inTrain = sample(1:n, size = round(split * n), replace = FALSE)
+  
+  return(list(
+    X_train = X[inTrain,],
+    y_train = y[inTrain],
+    X_test  = X[-inTrain,],
+    y_test  = y[-inTrain]
+  ))
+}
+
+set.seed(1234) # Pour la reproductibilité
+data_split = holdOut(X, y, split = 0.8)
+
+# On lance la prédiction
+y_pred = myClassifier(data_split$X_train, data_split$y_train, data_split$X_test)
+```
+
+
+### 4.3 Calcul de métriques
+
+```{r}
+# On convertit le facteur en numérique (0 pour No_Risk, 1 pour Risk)
+y_test_num = as.numeric(data_split$y_test) - 1
+
+myAccuracy = function(y, y_pred) {
+  return(mean(y == y_pred))
+}
+
+myRecall = function(y, y_pred) {
+  return(sum((y == y_pred) & (y == 1)) / sum(y == 1))
+}
+
+myPrecision = function(y, y_pred) {
+  return(sum((y == y_pred) & (y_pred == 1)) / sum(y_pred == 1))
+}
+
+# Maintenant on utilise y_test_num dans les fonctions
+myAccuracy(y_test_num, y_pred)
+myRecall(y_test_num, y_pred)
+myPrecision(y_test_num, y_pred)
+
+```
+
+Accuracy (73%) : Le modèle a raison dans 73% des cas au global. C'est un score correct, mais il est "trompeur".
+
+Recall / Rappel (26,8%) : Cela signifie que sur 100 personnes qui ont réellement un risque de diabète, ton modèle n'en détecte que 27. Il en "oublie" donc 73% (ce sont des Faux Négatifs).
+
+Precision (52,3%) : Quand le modèle prédit un "Risk", il a raison environ une fois sur deux.
+
+## 5 Calcul de l'AUC et du ROC
+
+```{r}
+install.packages("pROC")
+library(pROC)
+```
+
+
+
+```{r}
+myClassifier2 = function (X_train, y_train, X_test){
+  # 1. On prépare les données
+  data_train = cbind(y_train, X_train)
+  
+  # 2. On entraîne le modèle de régression logistique
+  mod = glm(y_train ~ ., data = data_train, family = binomial(link = "logit"))
+  
+  # 3. IMPORTANT : type = "response" renvoie la probabilité P(Y=1|X)
+  # On ne met PAS de condition (> 0.5) ici
+  y_pred_prob = predict.glm(mod, newdata = X_test, type = "response")
+  
+  return(y_pred_prob)
+}
+```
+
+
+```{r}
+# 1. Obtenir les probabilités sur le jeu de test du diabète
+y_prob_diabetes = myClassifier2(X_train = data_split$X_train, 
+                               y_train = data_split$y_train, 
+                               X_test = data_split$X_test)
+
+# 2. Calculer l'AUC
+roc_diabetes = roc(data_split$y_test, y_prob_diabetes)
+print(paste("L'AUC de mon modèle est de :", auc(roc_diabetes)))
+
+# 3. Tracer la courbe
+plot(roc_diabetes, col = "pink", main = "Courbe ROC - Prédiction du Diabète", legacy.axes = TRUE)
+abline(a = 0, b = 1, lty = 2, col = "lightblue") # La ligne de chance
+```
+
+
+
+La courbe ROC (Receiver Operating Characteristic) présentée ci-dessus permet d'évaluer la performance de notre classifieur de régression logistique sur l'ensemble du spectre des seuils possibles. En affichant la sensibilité (taux de vrais positifs) en fonction de l'anti-spécificité (taux de faux positifs), elle illustre le compromis entre la détection des patients à risque et les fausses alertes. L'aire sous la courbe (AUC) obtenue est de 0,778, ce qui indique une performance globale satisfaisante.
+
+
+D'un point de vue statistique, cela signifie qu'il y a environ 78 % de chances que notre modèle attribue une probabilité de risque plus élevée à un individu réellement "à risque" qu'à un individu "sans risque" choisi au hasard. Bien que ce résultat soit nettement supérieur à un classifieur aléatoire (représenté par la diagonale de référence), nous observons que la courbe n'atteint pas encore le coin supérieur gauche idéal. Ce constat nous incite à avoir un regard critique : le modèle est utile pour le dépistage, mais il pourrait être affiné, par exemple en explorant d'autres variables ou en testant un classifieur non-linéaire comme l'arbre de décision pour améliorer la séparation des classes.
+
+On peut commencer par l'abre de décision par exemple :
+
+## 6 Arbre de décision
+
+```{r}
+predictive_vars = data.frame(age=quantitative_vars$age,
+                             HbA1c_level=quantitative_vars$HbA1c_level,
+                             gender=qualitative_vars$gender,
+                             family_history_diabetes=qualitative_vars$family_history_diabetes,
+                             bmi=quantitative_vars$bmi,
+                             fasting_glucose_level=quantitative_vars$fasting_glucose_level,
+                             physical_activity_level=qualitative_vars$physical_activity_level)
+
+target = qualitative_vars$diabetes_risk
+
+```
+
+On partage le jeu de données en 80/20.
+
+```{r}
+set.seed(1234)
+n       = nrow(qualitative_vars) 
+inTrain = sample(1:n, size = round(0.8 * n), replace = FALSE)
+
+predictive_vars_test    = predictive_vars[-inTrain,]
+target_test             = target[-inTrain]
+predictive_vars_train   = predictive_vars[inTrain,]
+target_train            = target[inTrain]
+```
+
+
 
