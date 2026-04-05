@@ -8,26 +8,6 @@ date: "2026-03-02"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
-
 ### 1. Importation de la base de données
 
 On commence avec un espace de travail vide :
@@ -35,7 +15,7 @@ On commence avec un espace de travail vide :
 rm(list = ls())
 ```
 
-Ensuite, on imparte la base de données et on l'affiche ;
+Ensuite, on importe la base de données et on l'affiche ;
 ```{r}
 diabetes_risk_dataset = read.csv("diabetes_risk_dataset.csv")
 head(diabetes_risk_dataset)
@@ -104,7 +84,7 @@ Maintenant, on créé la variable binaire diabetes_risk à partir de diabetes_ri
 
 ```{r}
 # On crée la variable binaire (1 si risque, 0 sinon)
-diabetes_risk_dataset$diabetes_risk = 1 * (diabetes_risk_dataset$diabetes_risk_category == c("Prediabetes", "High Risk"))
+diabetes_risk_dataset$diabetes_risk = 1 * (diabetes_risk_dataset$diabetes_risk_category %in% c("Prediabetes", "High Risk"))
 
 # On la transforme en "factor" pour que R comprenne que c'est une catégorie
 diabetes_risk_dataset$diabetes_risk = factor(diabetes_risk_dataset$diabetes_risk, 
@@ -427,5 +407,279 @@ predictive_vars_train   = predictive_vars[inTrain,]
 target_train            = target[inTrain]
 ```
 
+```{r}
+install.packages("rpart")
+install.packages("rpart.plot")
+
+```
+```{r}
+library(rpart)
+library(rpart.plot)
+```
+
+```{r}
+classifTree = rpart(target_train ~ ., data = predictive_vars_train, 
+                    method = "class")
+```
+
+
+```{r}
+rpart.plot(x = classifTree, type = 3, extra = 2, fallen.leaves = TRUE,  
+           main = "Arbre de prédiction du risque d'être diabétique") 
+```
+
+
+```{r}
+plotcp(classifTree, upper = "splits")
+classifTree$cptable
+xerror  = classifTree$cptable[, 4]
+xstd    = classifTree$cptable[, 5]
+cp          = classifTree$cptable[, 1]
+min.xerror  = which.min(xerror)
+bestcp      = cp[min(which(xerror < (xerror[min.xerror] + xstd[min.xerror])))]
+prunedTree = prune(tree = classifTree, cp = bestcp)
+rpart.plot(prunedTree)  
+```
+
+```{r}
+set.seed(1234)
+nfolds = 10
+
+folds = NULL
+for(i in 1:n){
+  folds = c(folds, sample(1:nfolds, 1, replace = FALSE))
+}
+```
+
+
+```{r}
+install.packages("caret") # À faire une seule fois
+library(caret)
+
+set.seed(1234)
+nfolds = 10
+n = nrow(predictive_vars)
+
+# On crée les indices des folds de manière équilibrée
+folds = sample(rep(1:nfolds, length.out = n))
+
+# Initialisation des vecteurs de scores
+accuracy_fold   = numeric(nfolds)
+recall_fold     = numeric(nfolds)
+precision_fold  = numeric(nfolds)
+
+for(k in 1:nfolds){
+  # 1. Séparation Train / Test pour le fold k
+  inFold = which(folds == k)
+  
+  X_test_cv  = predictive_vars[inFold, ]
+  y_test_cv  = target[inFold]
+  X_train_cv = predictive_vars[-inFold, ]
+  y_train_cv = target[-inFold]
+  
+  # 2. Pre-processing : Imputation par la médiane
+  # Note : On calcule la médiane sur le TRAIN et on l'applique au TEST
+  Proc = preProcess(X_train_cv, method = "medianImpute")
+  X_train_cv = predict(Proc, X_train_cv)
+  X_test_cv  = predict(Proc, X_test_cv)
+  
+  # 3. Apprentissage de l'arbre sur le train
+  # On combine y et X pour rpart
+  data_train_cv = data.frame(target = y_train_cv, X_train_cv)
+  current_tree = rpart(target ~ ., data = data_train_cv, method = "class")
+  
+  # 4. Prédiction sur le test
+  target_pred = predict(current_tree, newdata = X_test_cv, type = "class")
+  
+  # 5. Calcul des métriques
+  # ATTENTION : vérifiez si votre label positif est "Risk" ou "1"
+  # J'utilise "Risk" ici car vous l'avez défini ainsi en section 2.1
+  accuracy_fold[k]  = mean(target_pred == y_test_cv)
+  recall_fold[k]    = caret::recall(target_pred, y_test_cv, relevant = "Risk")
+  precision_fold[k] = caret::precision(target_pred, y_test_cv, relevant = "Risk")
+}
+
+# Nommer les résultats pour la clarté
+names(accuracy_fold) = paste0("fold_", 1:nfolds)
+
+# Calcul des moyennes pour la CV sans élagage
+mean_acc = mean(accuracy_fold)
+mean_rec = mean(recall_fold)
+mean_prec = mean(precision_fold)
+
+# Affichage des résultats
+cat("Moyenne Accuracy (CV) :", mean_acc, "\n")
+cat("Moyenne Recall (CV)   :", mean_rec, "\n")
+cat("Moyenne Precision (CV):", mean_prec, "\n")
+```
+
+```{r}
+set.seed(1234)
+accuracy_fold_pruned = numeric(nfolds)
+recall_fold_pruned   = numeric(nfolds)
+precision_fold_pruned = numeric(nfolds)
+
+for(k in 1:nfolds){
+  inFold = which(folds == k)
+  
+  # Découpage train/test
+  X_train_cv = predictive_vars[-inFold,]
+  y_train_cv = target[-inFold]
+  X_test_cv  = predictive_vars[inFold,]
+  y_test_cv  = target[inFold]
+  
+  # Apprentissage de l'arbre complet
+  data_train = data.frame(target = y_train_cv, X_train_cv)
+  full_tree = rpart(target ~ ., data = data_train, method = "class")
+  
+  # --- ÉTAPE D'ÉLAGAGE ---
+  # On cherche le meilleur CP pour ce fold spécifique
+  cp_tab = full_tree$cptable
+  min_err = which.min(cp_tab[, "xerror"])
+  best_cp = cp_tab[min_err, "CP"]
+  
+  # On élague
+  pruned_cv_tree = prune(full_tree, cp = best_cp)
+  
+  # Prédiction
+  target_pred = predict(pruned_cv_tree, newdata = X_test_cv, type = "class")
+  
+  # Métriques
+  accuracy_fold_pruned[k] = mean(target_pred == y_test_cv)
+  recall_fold_pruned[k]   = caret::recall(target_pred, y_test_cv, relevant = "Risk")
+  precision_fold_pruned[k] = caret::precision(target_pred, y_test_cv, relevant = "Risk")
+}
+
+# Moyenne finale avec élagage
+mean(accuracy_fold_pruned)
+```
+
+Justification du choix du Classifieur Naïf Bayésien
+
+Après avoir implémenté l'Arbre de Décision, nous avons choisi d'utiliser le Classifieur Naïf Bayésien (Naive Bayes) comme seconde méthode de classification, plutôt que la méthode des K-Plus Proches Voisins (KNN). Ce choix repose sur plusieurs arguments techniques et pratiques liés à la nature de notre jeu de données sur le diabète :
+
+1. Gestion des données mixtes (Qualitatives et Quantitatives)
+
+Notre base de données contient un mélange de variables numériques (ex: HbA1c_level, bmi) et de variables catégorielles (ex: gender, family_history_diabetes).
+
+Le Naïf Bayésien traite naturellement ces deux types de données en calculant des probabilités conditionnelles pour chaque modalité.
+
+Le KNN, à l'inverse, calcule des distances géométriques (souvent la distance euclidienne). Cela pose problème pour les variables qualitatives qui n'ont pas de valeur numérique intrinsèque, nécessitant des transformations complexes (comme le "one-hot encoding") qui peuvent fausser la perception de "proximité" entre les patients.
+
+2. Sensibilité à l'échelle des variables
+
+Les variables de notre étude ont des échelles très disparates (l'âge va de 0 à 100, tandis que l'HbA1c varie sur de petites unités).
+
+Le KNN est extrêmement sensible à ces différences : une variable avec de grandes valeurs numériques écraserait totalement l'influence des autres si nous ne procédions pas à une normalisation stricte (centrage et réduction).
+
+Le Naïf Bayésien n'est pas influencé par l'échelle des variables, ce qui rend le modèle plus robuste et plus simple à mettre en œuvre sans étapes de pré-traitement lourdes.
+
+3. Approche Probabiliste vs Géométrique
+
+L'arbre de décision que nous avons déjà réalisé fonctionne par "coupures" nettes (seuils).
+
+Ajouter le Naïf Bayésien apporte une perspective complémentaire : au lieu de dire si un patient est "à risque" ou "non", il nous donne la probabilité d'appartenir à une classe en combinant l'influence de chaque symptôme. C'est une approche très proche du diagnostic médical réel, où l'on cumule des indices de probabilité.
+
+4. Performance et Volume de Données
+
+Le Naïf Bayésien est réputé pour sa rapidité d'exécution et son efficacité, même avec des échantillons de taille modérée. Il évite également le "fléau de la dimensionnalité" qui peut dégrader les performances du KNN lorsque le nombre de variables prédictives augmente.
+
+##7 Naif baeisien
+
+On va utiliser le classifieur naïf bayésien sur notre jeu de données. Il y a-t-il un hyperparamètre à choisir avec cette méthode ? Non.
+
+En combien de parties faudrait-il donc partager notre jeu de données ? En 2, une partie train et une partie test pour évaluer le classifieur.
+
+Avec la méthode de classification naïve bayésienne, a-t-on besoin de transformer les variables explicatives qualitatives en utilisant le codage binaire ou le label encoding ? De normaliser ou standardiser les variables explicatives quantitatives ?
+Contrairement aux modèles comme les k-NN ou les SVM, le Naive Bayes n'est pas sensible à l'échelle des variables, donc la normalisation n'est pas indispensable. Par contre, il traite différemment les types de variables : les qualitatives via des tables de fréquences et les quantitatives via des densités de probabilité.
+
+Mais fait-on d'autres hypothèses sur les variables explicatives ? Oui, elles suivent une loi normale.
+
+```{r}
+# Exemple pour les variables critiques
+par(mfrow=c(2,2)) # Pour afficher 4 graphiques d'un coup
+hist(diabetes_risk_dataset$HbA1c_level, main="Hist HbA1c", col="skyblue")
+hist(diabetes_risk_dataset$bmi, main="Hist BMI", col="coral")
+hist(diabetes_risk_dataset$fasting_glucose_level, main="Hist Glucose", col="lightgreen")
+hist(diabetes_risk_dataset$insulin_level, main="Hist Insuline", col="gold")
+```
+
+L'un des prérequis fondamentaux du classifieur Naïf Bayésien est l'hypothèse selon laquelle les variables quantitatives suivent une loi normale (distribution en cloche). Or, l'examen des histogrammes montre que certaines variables, comme le taux d'insuline (insulin_level), présentent une forte asymétrie positive avec une "longue traîne" vers les valeurs élevées, ce qui contredit cette hypothèse. En appliquant une transformation logarithmique (log(x+1)), on réduit l'impact des valeurs extrêmes et on "resserre" la distribution pour qu'elle se rapproche d'une courbe de Gauss. Cette étape de prétraitement est essentielle car elle permet au modèle de calculer des densités de probabilité beaucoup plus précises, améliorant ainsi la fiabilité globale des prédictions de risque.
+
+```{r}
+# On applique le log sur l'insuline (on ajoute +1 car le log de 0 est impossible)
+diabetes_risk_dataset$logInsulin = log(diabetes_risk_dataset$insulin_level + 1)
+
+# Vérification visuelle
+hist(diabetes_risk_dataset$logInsulin, col="gold", main="Histogramme de Log(Insuline)")
+```
+
+```{r}
+# 2. Création du dataframe predictive_vars
+# Cette ligne "crée" la colonne manquante
+diabetes_risk_dataset$log_insulin = log(diabetes_risk_dataset$insulin_level + 1)
+predictive_vars = data.frame(
+  HbA1c_level             = diabetes_risk_dataset$HbA1c_level,
+  bmi                     = diabetes_risk_dataset$bmi,
+  fasting_glucose_level   = diabetes_risk_dataset$fasting_glucose_level,
+  log_insulin             = diabetes_risk_dataset$log_insulin, # La version "en cloche"
+  age                     = diabetes_risk_dataset$age,
+  gender                  = diabetes_risk_dataset$gender,
+  family_history_diabetes = diabetes_risk_dataset$family_history_diabetes,
+  physical_activity_level = diabetes_risk_dataset$physical_activity_level
+)
+
+# 3. Définition de la target (la classe qu'on veut prédire)
+target = diabetes_risk_dataset$diabetes_risk
+
+```
+
+Partage du jeu de données en 80/20 : 
+
+```{r}
+set.seed(1234) # Pour la reproductibilité
+n = nrow(predictive_vars) 
+inTrain = sample(1:n, size = round(0.8 * n), replace = FALSE)
+
+# On crée les ensembles d'apprentissage et de test
+X_train = predictive_vars[inTrain, ]
+y_train = target[inTrain]
+
+X_test  = predictive_vars[-inTrain, ]
+y_test  = target[-inTrain]
+```
+
+
+```{r}
+library(naivebayes)
+
+# Phase d'apprentissage
+# On ajoute laplace = 1 pour gérer les cas rares
+classif_nb = naive_bayes(x = X_train, y = y_train, laplace = 1)
+
+# Phase de prédiction sur le jeu de test
+target_pred = predict(classif_nb, X_test, type = "class")
+```
+
+```{r}
+# Calcul de la matrice de confusion et des scores
+# Rappel : ta classe positive s'appelle "Risk"
+results = confusionMatrix(target_pred, y_test, positive = "Risk")
+
+# Affichage des métriques clés
+print(results)
+
+cat("Accuracy  :", results$overall["Accuracy"], "\n")
+cat("Recall    :", results$byClass["Sensitivity"], "\n")
+cat("Précision :", results$byClass["Pos Pred Value"], "\n")
+```
+
+En comparant les performances de nos deux modèles principaux, nous constatons qu'ils atteignent tous les deux un excellent niveau de prédiction. L'Arbre de décision (évalué par validation croisée) présente une exactitude (Accuracy) de 92,75 %, tandis que le classifieur Naïf Bayésien se montre très légèrement supérieur avec 93,00 %.
+
+Cependant, dans le cadre du diagnostic du diabète, le choix du modèle optimal dépend du compromis recherché entre le Rappel (minimiser les patients malades ignorés) et la Précision (minimiser les fausses alertes).
+D'un côté, l'Arbre de décision offre le meilleur Rappel (93,54 % contre 92,10 % pour le Naïf Bayésien), ce qui en fait l'outil le plus sûr pour une campagne de dépistage large où l'on ne veut rater aucun patient à risque.
+D'un autre côté, le Naïf Bayésien se démarque par une meilleure Précision (94,98 % contre 93,65 % pour l'arbre) : lorsqu'il diagnostique un patient "à risque", le diagnostic a plus de chances d'être exact, limitant ainsi le stress ou les examens inutiles.
+
+En conclusion, bien que le Naïf Bayésien soit globalement un peu plus juste et précis, l'Arbre de décision reste un candidat de premier choix pour la médecine de prévention grâce à son léger avantage en détection (Rappel) et à la lisibilité de ses règles de diagnostic. Les deux approches se révèlent donc très pertinentes et pourraient même être utilisées de manière complémentaire.
 
 
