@@ -1,17 +1,22 @@
 ---
-title: "Projet de Classification : Prédiction du Risque de Diabète"
+title: 'Projet de Classification : Prédiction du Risque de Diabète'
 author: "Maëlle Guibert, Mahdjoub Amélia, Charlène Pinton"
 date: "2026-03-02"
-output: 
+output:
   pdf_document:
     toc: true
     number_sections: true
+    latex_engine: xelatex
+  html_document:
+    toc: true
+    df_print: paged
 ---
 # 1. Présentation générale des données
 
 # 1.1 Objectif du projet
 
-Le but de ce projet est de prédire si un individu appartient à la catégorie « à risque » ou « sans risque » de diabète, en se basant sur la variable diabetes_risk_category. Nous avons transformé ce problème en une classification binaire pour identifier les individus à risque.
+Les données recensent les données métaboliques dʼindividus tels que le glucose et lʼinsuline, ainsi que le mode de vie de chaque individu comme le sommeil et le niveau de stress. Selon toutes ces données, un score de risque de diabètes et la prédiction du niveau de diabètes est calculé.
+Le but de ce projet est de prédire et classer, à lʼaide des méthodes de lʼarbre de décision ainsi que le classifieur Naïf Bayésien, les individus dans les catégories “à risque” ou “sans risque” de diabète, en se basant sur la variable diabetes_risk_category. Nous avons converti ce problème en une tâche de classification binaire visant à identifier les individus considérés comme étant à risque.
 
 #1.2 Description du jeu de données
 
@@ -55,11 +60,11 @@ La première étape consiste à charger la base de données :
 diabetes_risk_dataset = read.csv("diabetes_risk_dataset.csv")
 ```
 
-Ensuite, avant de manipuler les variables, il est crucial de s'assurer de la fiabilité de la base de données. Nous avons commencé par vérifier la présence de données manquantes (N/A) :
+Après chargement des données, il est crucial de s'assurer de la fiabilité de la base de données. Nous avons commencé par vérifier la présence de données manquantes (N/A):
 ```{r}
 colSums(is.na(diabetes_risk_dataset))
 ```
-Cette étape a confirmé que notre jeu de données est complet, ce qui nous permet de poursuivre l'analyse sans avoir recours à des méthodes d'imputation complexes. Parallèlement, nous avons comptabilisé les valeurs égales à zéro :
+Cette étape a confirmé que notre jeu de données est complet, ce qui nous a permis de poursuivre l'analyse sans avoir recours à des méthodes d'imputation complexes. Parallèlement, nous avons comptabilisé les valeurs égales à zéro :
 
 ```{r}
 colSums(diabetes_risk_dataset == 0)
@@ -78,8 +83,7 @@ Risque de diabète : Le score de risque moyen est de 48,7 sur 100, ce qui montre
 
 # 2.2 Création de la variable cible (Target) et analyse graphique
 
-Transformation binaire :
-Nous utilisons l'opérateur %in% pour regrouper les individus en "Prediabetes" ou "High Risk" sous une seule étiquette de risque. La multiplication par 1 permet de convertir rapidement le résultat logique en numérique (0 ou 1), puis nous transformons le tout en factor pour que R traite cette variable comme une catégorie et non comme un nombre lors de l'apprentissage.
+Transformation binaire : Nous utilisons l'opérateur %in% pour regrouper les individus en "Prediabetes" ou "High Risk" sous une seule étiquette de risque. La multiplication par 1 permet de convertir rapidement le résultat logique en numérique (0 ou 1), puis nous transformons le tout en factor pour que R traite cette variable comme une catégorie et non comme un nombre lors de l'apprentissage.
 ```{r}
 # On crée la variable binaire (1 si risque, 0 sinon)
 diabetes_risk_dataset$diabetes_risk = 1 * (diabetes_risk_dataset$diabetes_risk_category 
@@ -93,6 +97,7 @@ diabetes_risk_dataset$diabetes_risk = factor(diabetes_risk_dataset$diabetes_risk
 
 Pour vérifier si notre nouvelle variable fait sens, nous l'avons croisée avec le taux d'HbA1c.
 ```{r}
+library(ggplot2)
 ggplot(diabetes_risk_dataset, aes(x = diabetes_risk, y = HbA1c_level, fill = diabetes_risk)) +
   geom_boxplot() +
   labs(title = "Distribution de l'HbA1c selon le risque de diabète",
@@ -124,23 +129,13 @@ Ce graphique confirme la cohérence de notre base : plus la catégorie de score 
 
 Justification du découpage de la variable risk_score_cat
 
-Le choix de découper le score de risque en quatre tranches égales (0, 25, 50, 75, 100) répond à une double logique : 
-
-Une logique de quadrants standard : Le score étant étalonné de 0 à 100, un découpage par tranches de 25 % est la méthode la plus intuitive pour segmenter une échelle de probabilité. Cela permet de créer des classes de risque symétriques et facilement compréhensibles.
-
-
-Adéquation avec la distribution des données : D'après notre summary(), la médiane du score se situe à 43,9. En fixant un palier à 50, nous séparons de manière équilibrée la population en deux grands blocs (risque modéré vs risque élevé), ce qui stabilise nos analyses comparatives.
-
-
-Lisibilité clinique : Passer d'un score continu à des étiquettes ordinales ("Risque Faible" à "Risque Très Élevé") transforme une donnée brute en un outil de diagnostic rapide. Un médecin peut ainsi situer immédiatement un patient dans un palier de vigilance sans avoir à interpréter la précision du chiffre à l'unité près.
-
-Validation par l'HbA1c : La pertinence de ce découpage est confirmée par notre second boxplot. On observe que chaque palier de 25 points correspond à une augmentation significative et régulière du taux d'HbA1c, ce qui prouve que ces seuils "mathématiques" correspondent bien à une réalité biologique dans notre jeu de données.
+La transformation de cette variable en une variable catégorielle à quatre niveaux s'appuie sur une cohérence à la fois statistique, clinique et biologique. En optant pour un découpage par quartiles (tranches de 25 %), nous suivons la logique intuitive d'une échelle étalonnée de 0 à 100, ce qui permet de structurer les données en quadrants symétriques. Cette approche est d'autant plus pertinente que la médiane du score se situe à 43,9; ainsi, le palier central de 50 assure un équilibre naturel entre les populations à risque modéré et celles à risque élevé, stabilisant par la même occasion nos analyses comparatives. Au-delà de l'aspect mathématique, cette segmentation répond à un impératif de lisibilité clinique. En
+substituant des niveaux de risque, allant de "Risque Faible" à "Risque Très Élevé", aux chiffres bruts, nous transformons une donnée complexe en un outil de diagnostic rapide, permettant au praticien de situer immédiatement le patient dans un palier de vigilance sans se perdre dans la précision de l'unité. La validité de ces seuils est d'ailleurs confirmée par l'observation de nos boxplots : chaque progression de 25 points
+sur le score correspond à une hausse significative et régulière du taux d'HbA1c. Cette corrélation étroite prouve que nos paliers mathématiques ne sont pas arbitraires, mais qu'ils traduisent fidèlement une réalité biologique au sein de notre échantillon.
 
 # 3. Segmentation et exploration approfondie des variables
 
 Pour finaliser notre analyse préliminaire, nous avons fait le choix de scinder notre jeu de données en deux ensembles distincts : l'un regroupant les variables quantitatives (numériques) et l'autre les variables qualitatives (catégorielles).
-
-Justification technique :
 Cette séparation est indispensable car R traite différemment ces deux types de données :
 
 Pour les variables qualitatives : Nous les convertissons en factor. Cela force R à ne plus les lire comme du texte ou des nombres simples, mais comme des étiquettes de classes. C'est ce qui permet d'obtenir des fréquences et des proportions plutôt que des moyennes absurdes (comme sur la variable gender par exemple).
@@ -182,13 +177,14 @@ summary(quantitative_vars)
 summary(qualitative_vars)
 ```
 
-Analyse des résultats :
+Concernant lʼanalyse des résultats :
 
 Variables numériques : La médiane du BMI est de 32,75, confirmant que plus de la moitié de notre échantillon est en situation d'obésité. Le taux d'HbA1c présente une médiane de 5,5 %, ce qui est très proche du seuil critique du prédiabète.
 
 Variables catégorielles : Le résumé nous montre la répartition par genre et par niveau d'activité physique, nous permettant de vérifier l'équilibre de nos classes avant l'apprentissage.
 
-Pour ne laisser aucune variable au hasard, nous avons automatisé la génération des graphiques via des boucles for. Cette approche exhaustive est recommandée pour identifier les variables ayant le plus fort pouvoir discriminant.
+Pour ne laisser aucune variable au hasard, nous avons automatisé la génération des graphiques via des
+boucles for.
 
 ```{r}
 # Génération automatique des histogrammes (Distribution des variables)
@@ -205,8 +201,6 @@ for(i in 1:ncol(qualitative_vars)){
           xlab = colnames(qualitative_vars)[i])
 }
 ```
-
-Corrélation et impact sur la Target :
 
 La "Correlation heatmap" nous permet de détecter d'éventuelles redondances entre variables (multicolinéarité). Ensuite, le croisement systématique de chaque variable avec notre target diabetes_risk (via des boxplots et barplots empilés) permet de valider visuellement nos prédicteurs.
 
@@ -242,8 +236,7 @@ for(i in 1:ncol(qualitative_vars)){
 }
 ```
 
-Interprétation finale de l'analyse préliminaire :
-Cette batterie de tests confirme que des variables comme l'HbA1c, le Glucose et le BMI montrent des différences de distribution marquées entre les groupes "Risk" et "No_Risk". À l'inverse, des variables comme le sommeil (sleep_hours) semblent moins discriminantes visuellement. Ces observations nous guideront dans le choix des variables à inclure dans nos classifieurs finaux.
+Ces graphiques confirment que des variables comme l'HbA1c, le Glucose et le BMI montrent des différences de distribution marquées entre les groupes "Risk" et "No_Risk". À l'inverse, des variables comme le sommeil (sleep_hours) semblent moins discriminantes visuellement. Ces observations nous guideront dans le choix des variables à inclure dans nos classifieurs finaux.
 
 # 4. Premières approches
 
@@ -318,15 +311,14 @@ myRecall(y_test_num, y_pred)
 myPrecision(y_test_num, y_pred)
 ```
 
-Après avoir entraîné notre modèle de régression logistique sur 80 % des données, nous obtenons les performances suivantes sur le jeu de test :
+Après avoir entraîné notre modèle de régression logistique sur 80 % des données, nous obtenons les performances suivantes sur le jeu de test :
 
 Accuracy (93,5 %) : Le modèle est globalement très fiable et classe correctement la grande majorité des individus.
 
-Recall / Rappel (95,0 %) : C'est notre résultat le plus crucial pour un diagnostic médical. Cela signifie que sur 100 personnes réellement à risque, le modèle en identifie 95. Nous ne passons à côté que de 5 % des cas (Faux Négatifs), ce qui est excellent pour une stratégie de dépistage.
+Recall / Rappel (95,0 %) : C'est notre résultat le plus crucial pour un diagnostic médical. Cela signifie que sur 100 personnes réellement à risque, le modèle en identifie 95. Nous ne passons à côté que de 5 % des cas (Faux Négatifs), ce qui reste un bon resultat pour une stratégie de dépistage.
 
-Précision (93,3 %) : Lorsqu'une personne est prédite "à risque", le diagnostic est exact dans plus de 93 % des cas. Cela limite les fausses alertes qui pourraient engendrer du stress ou des examens inutiles pour des patients sains.
+Précision (93,3 %) : Lorsqu'une personne est prédite "à risque", le diagnostic est exact dans plus de 93 % des cas. Cela limite les fausses alertes qui pourraient engendrer du stress ou des examens inutiles pour des patients sains.
 
-Justification des résultats :
 Ces scores très élevés s'expliquent par la forte corrélation entre les variables choisies (HbA1c_level et bmi) et la pathologie étudiée. Le modèle parvient à définir une frontière de décision efficace dès cette étape de régression logistique simple.
 
 # 5. Évaluation globale : Courbe ROC et AUC
@@ -337,11 +329,12 @@ Pour valider les performances de notre régression logistique au-delà d'un simp
 
 Contrairement au classifieur précédent, la fonction myClassifier2 est paramétrée avec type = "response".
 
-Pourquoi les probabilités ? Pour tracer une courbe ROC, le modèle ne doit pas rendre une décision binaire (0 ou 1), mais une probabilité continue P(Y=1∣X). Cela permet à la fonction roc() de tester tous les seuils de coupure possibles (de 0 à 1) et d'observer comment la sensibilité et la spécificité évoluent.
+Pour tracer une courbe ROC, le modèle ne doit pas rendre une décision binaire (0 ou 1), mais une probabilité continue P(Y=1∣X). Cela permet à la fonction roc() de tester tous les seuils de coupure possibles (de 0 à 1) et d'observer comment la sensibilité et la spécificité évoluent.
 
 Représentation graphique : La ligne de chance (diagonale en bleu ciel) représente un modèle aléatoire avec une AUC de 0,5.
 ```{r}
-install.packages("pROC")
+#install.packages("pROC")
+library(pROC)
 
 myClassifier2 = function (X_train, y_train, X_test){
   # 1. On prépare les données
@@ -377,9 +370,9 @@ abline(a = 0, b = 1, lty = 2, col = "lightblue")
 
 L'aire sous la courbe obtenue est de 0,9866.
 
-Est-ce un bon chiffre ? C'est un résultat excellent, frôlant la perfection (1,0). D'un point de vue statistique, cela signifie qu'il y a environ 98,7% de chances que notre modèle attribue une probabilité de risque plus élevée à un individu réellement "à risque" qu'à un individu "sans risque" choisi au hasard.
+D'un point de vue statistique, cela signifie qu'il y a environ 98,7% de chances que notre modèle attribue une probabilité de risque plus élevée à un individu réellement "à risque" qu'à un individu "sans risque" choisi au hasard.
 
-Regard critique : Bien que la courbe soit extrêmement proche du coin supérieur gauche idéal, ce score quasi parfait peut parfois cacher un sur-apprentissage (overfitting) ou une trop forte dépendance à une variable spécifique comme l'HbA1c.
+Bien que la courbe soit extrêmement proche du coin supérieur gauche idéal, ce score quasi parfait peut parfois cacher un sur-apprentissage (overfitting) ou une trop forte dépendance à une variable spécifique comme l'HbA1c
 
 # 6. Arbre de décision
 
@@ -390,10 +383,10 @@ Après avoir analysé les excellentes performances de notre régression logistiq
 Pour exploiter pleinement la capacité de l'arbre de décision à gérer des relations complexes, nous ne nous limitons plus aux deux variables précédentes. Nous construisons un nouveau dataframe predictive_vars incluant sept indicateurs (cliniques et mode de vie). Nous procédons ensuite à un nouveau découpage des données en conservant une proportion de 80 % pour l'apprentissage et 20 % pour le test, tout en fixant la même graine aléatoire (set.seed(1234)) pour garantir la cohérence de nos comparaisons entre les modèles.
 
 ```{r}
-install.packages("caret")
+#install.packages("caret")
 library(caret)
-install.packages("rpart")
-install.packages("rpart.plot")
+#install.packages("rpart")
+#install.packages("rpart.plot")
 
 predictive_vars = data.frame(age=quantitative_vars$age,
                              HbA1c_level=quantitative_vars$HbA1c_level,
@@ -417,6 +410,8 @@ target_train            = target[inTrain]
 # 6.2 Visualisation et interprétation
 
 ```{r}
+library(rpart)
+library(rpart.plot)
 classifTree = rpart(target_train ~ ., data = predictive_vars_train, 
                     method = "class")
 
@@ -424,16 +419,9 @@ rpart.plot(x = classifTree, type = 3, extra = 2, fallen.leaves = TRUE,
            main = "Arbre de prédiction du risque d'être diabétique") 
 ```
 
-Le facteur dominant : L'indice de masse corporelle (BMI)
 La racine de l'arbre (le premier nœud) confirme que le BMI est la variable la plus discriminante pour le modèle. Le seuil critique est de 31. Si le patient a un BMI supérieur ou égal à 31 (59% de l'échantillon), la probabilité de risque de diabète grimpe immédiatement à 0,90.
-
-Analyse des profils à "Haut Risque" (Branche de droite) : Le profil le plus critique : Les patients ayant un BMI ≥34 (43% de la population totale) sont classés en "Risk" avec une certitude quasi absolue de 0,98 (98 %). Pour ce groupe, les autres variables ne sont même plus nécessaires au diagnostic tant le facteur pondéral est lourd.
-Le profil intermédiaire : Pour ceux dont le BMI est compris entre 31 et 34, le modèle regarde ensuite la glycémie à jeun (fasting_glucose_level). Si celle-ci est ≥99 mg/dL, le patient est classé à risque (probabilité de 0,91).
-
-Analyse des profils à "Faible Risque" (Branche de gauche) : Le profil le plus sain : Si le BMI est inférieur à 31 ET que la glycémie à jeun est inférieure à 111 mg/dL (38% de l'échantillon), le risque de diabète est quasi nul (probabilité de 0,05).
-L'exception glycémique : Un patient avec un BMI "bas" (<31) mais une glycémie élevée (≥111 mg/dL) bascule directement en catégorie "Risk" avec une probabilité de 0,81. Cela montre que le glucose peut surpasser le facteur poids dans certains diagnostics.
-
-L'influence de l'âge : L'âge n'apparaît qu'en bout d'arbre pour une petite fraction de la population (7 %) ayant un BMI modéré (31-34) et une glycémie basse. Dans ce cas précis, avoir plus de 51 ans fait passer la probabilité de risque de 0,20 à 0,58.
+Les patients ayant un BMI ≥34 (43% de la population totale) sont classés en "Risk" avec une certitude quasi absolue de 0,98 (98 %). Pour ce groupe, les autres variables ne sont même plus nécessaires au diagnostic tant le facteur pondéral est lourd. Le profil intermédiaire : Pour ceux dont le BMI est compris entre 31 et 34, le modèle regarde ensuite la glycémie à jeun (fasting_glucose_level). Si celle-ci est ≥99 mg/dL, le patient est classé à risque (probabilité de 0,91). Si le BMI est inférieur à 31 et que la glycémie à jeun est inférieure à 111 mg/dL (38% de l'échantillon), le risque de diabète est quasi nul (probabilité de 0,05). Un patient avec un BMI "bas" (<31) mais une glycémie
+élevée (≥111 mg/dL) bascule directement en catégorie "Risk" avec une probabilité de 0,81. Cela montre que le glucose peut surpasser le facteur poids dans certains diagnostics. L'âge n'apparaît qu'en bout d'arbre pour une petite fraction de la population (7 %) ayant un BMI modéré (31-34) et une glycémie basse. Dans ce cas précis, avoir plus de 51 ans fait passer la probabilité de risque de 0,20 à 0,58.
 
 # 6.3 Construction de l'arbre avec élagage 
 
@@ -468,10 +456,14 @@ Pour garantir que nos résultats ne dépendent pas d'un découpage "chanceux" en
 
 Nous commençons par évaluer les performances moyennes d'un arbre non élagué sur les 10 folds.
 ```{r}
+#install.packages("caret")
 library(caret)
 set.seed(1234)
 nfolds = 10
 n = nrow(predictive_vars)
+accuracy_fold  = numeric(nfolds) 
+recall_fold    = numeric(nfolds)
+precision_fold = numeric(nfolds)
 
 # Création des groupes (folds)
 folds = sample(rep(1:nfolds, length.out = n))
@@ -506,7 +498,8 @@ for(k in 1:nfolds){
   recall_fold[k]    = caret::recall(target_pred, y_test_cv, relevant = "Risk")
   precision_fold[k] = caret::precision(target_pred, y_test_cv, relevant = "Risk")
 }
-
+mean_acc = mean(accuracy_fold)
+mean_rec = mean(recall_fold)
 cat("Moyenne Accuracy (CV) :", mean_acc, "\n")
 cat("Moyenne Recall (CV)   :", mean_rec, "\n")
 ```
@@ -578,7 +571,7 @@ Plutôt que de donner un verdict binaire immédiat, il estime la probabilité d'
 
 # 7.4 Efficacité et volume de données
 
-Avec 6 000 individus, le Naïf Bayésien est réputé pour sa rapidité d'exécution. Il évite également le "fléau de la dimensionnalité" qui dégrade souvent les performances du KNN lorsque le nombre de variables prédictives augmente.
+Avec 6 000 individus, le Naïf Bayésien est réputé pour sa rapidité d'exécution, il gère mieux l'augmentation du nombre de variables. Avec le KNN, plus on ajoute de critères, plus il est difficile de calculer des distances cohérentes entre les patients, ce qui finit par dégrader la qualité du diagnostic.
 
 # 8. Prétraitement et Implémentation du Naïf Bayésien
 
@@ -592,7 +585,9 @@ hist(diabetes_risk_dataset$bmi, main="Hist BMI", col="coral")
 hist(diabetes_risk_dataset$fasting_glucose_level, main="Hist Glucose", col="lightgreen")
 hist(diabetes_risk_dataset$insulin_level, main="Hist Insuline", col="gold")
 ```
+
 L'examen des histogrammes révèle que la variable insulin_level présente une forte asymétrie positive (une longue traîne vers la droite), ce qui s'éloigne d'une distribution gaussienne. Pour corriger ce biais et améliorer la précision des calculs de probabilités du modèle, nous appliquons une transformation logarithmique : log(x+1). Cette étape permet de "resserrer" les valeurs extrêmes et de stabiliser la variance.
+
 ```{r}
 diabetes_risk_dataset$log_insulin = log(diabetes_risk_dataset$insulin_level + 1)
 ```
@@ -648,21 +643,32 @@ cat("Précision :", results$byClass["Pos Pred Value"], "\n")
 
 
 # 9. Conclusion comparative et choix du modèle final
+
 Après avoir expérimenté trois approches (Régression Logistique, Arbre de Décision et Naïf Bayésien), nous pouvons dresser un bilan de nos résultats.
 
 # 9.1 Synthèse des performances
 
-En comparant les performances de nos deux modèles principaux, nous constatons qu'ils atteignent tous les deux un niveau de prédiction très élevé :l'arbre de décision (évalué par validation croisée) présente une exactitude (Accuracy) de 92,75 %.
-Le classifieur Naïf Bayésien se montre très légèrement supérieur avec 93,00 %.
+En comparant les performances de nos deux modèles principaux, nous constatons qu'ils atteignent tous les deux un niveau de prédiction très élevé :l'arbre de décision (évalué par validation croisée) présente une exactitude (Accuracy) de 92,75 %. Le classifieur Naïf Bayésien se montre très légèrement supérieur avec 93,00 %.
 
 # 9.2 Le compromis médical (Regard critique)
 
-Dans le cadre du diagnostic du diabète, le choix du modèle optimal dépend du compromis recherché entre le Rappel (minimiser les malades ignorés) et la Précision (minimiser les fausses alertes) : l'arbre de décision offre le meilleur Rappel (93,54 % contre 92,10 %). C'est donc l'outil le plus sûr pour une campagne de dépistage large : on préfère tester une personne saine par erreur plutôt que de laisser repartir un patient malade sans diagnostic.
-Le Naïf Bayésien se démarque par une meilleure Précision (94,98 % contre 93,65 %). Lorsqu'il prédit un risque, il a presque 95 % de chances d'avoir raison, ce qui limite le stress inutile pour les patients.
+Dans le cadre du diagnostic du diabète, le choix du modèle optimal dépend du compromis recherché entre le Rappel (minimiser les malades ignorés) et la Précision (minimiser les fausses alertes) : l'arbre de décision offre le meilleur Rappel (93,54 % contre 92,10 %). C'est donc l'outil le plus sûr pour une campagne de dépistage large : il serait préférable tester une personne saine par erreur plutôt que de laisser repartir un
+patient malade sans diagnostic. Le Naïf Bayésien se démarque par une meilleure Précision (94,98 % contre 93,65 %). Lorsqu'il prédit un risque, il a presque 95 % de chances d'avoir raison, ce qui limite le stress inutile pour les patients.
 
 # 9.3 Verdict final
 
 En conclusion, bien que le Naïf Bayésien soit globalement un peu plus juste et précis, l'Arbre de décision reste un candidat de premier choix pour la médecine de prévention. Son léger avantage en détection (Rappel) et la lisibilité de ses règles (seuils sur le BMI et le Glucose) en font un outil d'aide à la décision plus transparent et rassurant pour le corps médical.
 Les deux approches se révèlent très pertinentes et pourraient même être utilisées de manière complémentaire pour sécuriser le diagnostic final.
 
+# 10. Intellignece artificielle
+
+L'intelligence artificielle a été utilisée uniquement pour la rédaction de notre rapport, notamment pour la correction orthographique et l'amélioration de la syntaxe. Pour ce qui est de notre code, nous n'avons pas eu recours à l'intelligence artificielle, car nous nous sommes principalement aidés des ressources du cours et des travaux pratiques.
+
+# 11. Répartition du travail et contributions
+
+Afin de garantir la cohérence de nos analyses, nous avons organisé notre travail de manière fluide, mêlant travail individuel sur des points précis et collaboration étroite sur les parties les plus techniques.
+
+Maëlle a commencé le projet en réalisant les premières statistiques descriptives (analyses univariées). Ensuite, elle s'est occupée de la validation finale avec la courbe ROC et le calcul de l'AUC. Amélia et Charlène ont réalisé ensemble les graphiques de croisement entre les variables (analyses bivariées et liens avec la cible). Par la suite, Amélia et Charlène ont modélisé en binôme, la conception de l'Arbre de décision (élagage compris) ainsi que l'implémentation du classifieur Naïf Bayésien.
+Charlène a rédigé l'introduction et la description détaillée des variables, la partie statistiques descriptives, la catégorisation de la target et les premières métriques. Maëlle puis Amélia ont rédigé des parties méthodologiques et l'analyse des résultats.
+Au final, nous avons toutes les trois relu et ajusté l'ensemble du rapport pour que le document soit homogène et complet. Bien que chaque section ait eu une rédactrice principale, nous tenons à préciser que le texte final est un travail collectif. Chaque partie a été reprise, corrigée et reformulée par les autres membres du groupe. Ce travail de relecture croisée nous a permis d'harmoniser le style, d'affiner les explications et de garantir la cohérence globale du rapport.
 
